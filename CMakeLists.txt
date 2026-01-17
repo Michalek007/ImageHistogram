@@ -3,6 +3,6 @@ project(ImageHistogram C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(ImageHistogram src/main.c src/image_data.c)
+add_executable(ImageHistogram src/main.c src/image_data.c src/my_timers.c)
 
 target_include_directories(ImageHistogram PRIVATE src/include)

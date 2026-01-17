@@ -5,6 +5,7 @@
 #include <assert.h>
 
 #include "image_data.h"
+#include "my_timers.h"
 
 #define HIST_SIZE 256
 #define NUM_THREADS 4
@@ -45,10 +46,11 @@ DWORD WINAPI compute_histogram(LPVOID lpParam) {
 // Print histogram in terminal
 void print_histogram(const int* hist) {
     int max_value = 0;
-    for (int i = 0; i < HIST_SIZE; i++)
+    for (int i = 0; i < HIST_SIZE; i++){
         if (hist[i] > max_value){
             max_value = hist[i];
         }
+    }
 
     for (int i = 0; i < HIST_SIZE; i++) {
         int bar_length = (int)((double)hist[i] / max_value * MAX_BAR_LENGTH);
@@ -72,6 +74,7 @@ int main() {
 
     int rows_per_thread = IMG_HEIGHT / NUM_THREADS;
 
+    start_time();
     for (int i = 0; i < NUM_THREADS; i++) {
         thread_data[i].image = &image[0][0];
         thread_data[i].start_row = i * rows_per_thread;
@@ -98,6 +101,8 @@ int main() {
             global_hist[j] += thread_data[i].local_hist[j];
         }
     }
+    stop_time();
+    print_time("Elapsed:");
 
     // Print histogram
     print_histogram(global_hist);
