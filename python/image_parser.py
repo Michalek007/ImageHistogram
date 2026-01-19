@@ -2,7 +2,6 @@ import cv2
 import os
 import numpy as np
 
-
 def save_image_as_c_array(image_path, output_file):
     # Load image using OpenCV
     # image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -64,7 +63,35 @@ def save_image_as_c_array(image_path, output_file):
     print(f"C array saved to: {os.path.abspath(output_file)}")
 
 
-# -------------------------
-# Example usage
-# -------------------------
-save_image_as_c_array("img.png", "image_data.c")
+def save_image_histogram_as_c_array(image_path, output_file):
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+    if image is None:
+        raise FileNotFoundError("Could not load image")
+
+    with open(output_file, "w") as f:
+        f.write("#include <stdint.h>\n\n")
+        # Compute histogram
+        hist = cv2.calcHist([image], [0], None, [256], [0, 256])
+        hist = hist.astype(np.uint32).flatten()  # Use uint32 to store counts safely
+        f.write(f"const uint32_t hist_gray[256] = {{\n    " + ", ".join(map(str, hist)) + "\n};\n")
+
+
+def save_image_as_raw(image_path, output_file):
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+    if image is None:
+        raise ValueError(f"Failed to load image: {image_path}")
+
+    if image.dtype != np.uint8:
+        image = image.astype(np.uint8)
+
+    # Write raw bytes to file
+    with open(output_file, "wb") as f:
+        f.write(image.tobytes())
+
+
+if __name__ == "__main__":
+    # save_image_as_c_array("img.png", "image_data.c")
+    save_image_as_raw("big_img.png",  "image_raw")
+    save_image_histogram_as_c_array("big_img.png",  "big_img.c")
