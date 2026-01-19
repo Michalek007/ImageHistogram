@@ -9,7 +9,7 @@
 
 #define HIST_SIZE 256
 #define NUM_THREADS 4
-#define MAX_BAR_LENGTH 50
+#define MAX_BAR_LENGTH 100
 
 // Example image
 //#define IMG_HEIGHT 1000
@@ -62,11 +62,20 @@ void print_histogram(const int* hist) {
     }
 }
 
+
 int main() {
     // Fill image with random values
 //    for (int i = 0; i < IMG_HEIGHT; i++)
 //        for (int j = 0; j < IMG_WIDTH; j++)
 //            image[i][j] = rand() % 256;
+//    uint8_t* image_array = &image[0][0];
+
+
+    uint8_t* image;
+    image = malloc(IMG_WIDTH * IMG_HEIGHT);
+    if (load_image(image) <= 0){
+        return -1;
+    }
 
     // Thread data
     ThreadData thread_data[NUM_THREADS];
@@ -76,7 +85,7 @@ int main() {
 
     start_time();
     for (int i = 0; i < NUM_THREADS; i++) {
-        thread_data[i].image = &image[0][0];
+        thread_data[i].image = image;
         thread_data[i].start_row = i * rows_per_thread;
         thread_data[i].end_row = (i == NUM_THREADS - 1) ? IMG_HEIGHT : (i + 1) * rows_per_thread;
         thread_data[i].width = IMG_WIDTH;
@@ -102,14 +111,22 @@ int main() {
         }
     }
     stop_time();
-    print_time("Elapsed:");
 
-    // Print histogram
     print_histogram(global_hist);
 
     for (int i = 0; i < HIST_SIZE; i++) {
         assert(global_hist[i] == hist_gray[i]);
     }
 
+    printf("\n%-10s %s\n", "Tone", "Pixels");
+    printf("--------------------\n");
+    for (int i = 0; i < HIST_SIZE; i += 10) {
+        printf("  %-8d %d\n", i, global_hist[i]);
+    }
+    printf("\n");
+
+    print_time("Elapsed:");
+
+    free(image);
     return 0;
 }

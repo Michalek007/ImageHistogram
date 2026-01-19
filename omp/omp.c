@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include <omp.h>          // OpenMP
+#include <omp.h>
 #include "my_timers.h"
 #include "image_data.h"
 
 #define HIST_SIZE 256
-#define NUM_THREADS 4
-#define MAX_BAR_LENGTH 50
+#define NUM_THREADS 8
+#define MAX_BAR_LENGTH 100
 
 // Print histogram in terminal
 void print_histogram(const int* hist)
@@ -32,6 +32,12 @@ void print_histogram(const int* hist)
 
 int main(void)
 {
+    uint8_t* image;
+    image = malloc(IMG_WIDTH * IMG_HEIGHT);
+    if (load_image(image) <= 0) {
+        return -1;
+    }
+
     omp_set_num_threads(NUM_THREADS);
     int global_hist[HIST_SIZE] = {0};
 
@@ -43,11 +49,8 @@ int main(void)
         int local_hist[HIST_SIZE] = {0};
 
         #pragma omp for
-        for (int i = 0; i < IMG_HEIGHT; i++) {
-            const uint8_t* row = &image[i][0];
-            for (int j = 0; j < IMG_WIDTH; j++) {
-                local_hist[row[j]]++;
-            }
+        for (int i = 0; i < IMG_HEIGHT * IMG_WIDTH; i++) {
+            local_hist[image[i]]++;
         }
 
         // Merge local histograms into global
@@ -59,7 +62,6 @@ int main(void)
         }
     }
     stop_time();
-    print_time("Elapsed:");
 
     // Print histogram
     print_histogram(global_hist);
@@ -69,5 +71,14 @@ int main(void)
         assert(global_hist[i] == hist_gray[i]);
     }
 
+    printf("\n%-10s %s\n", "Tone", "Pixels");
+    printf("--------------------\n");
+    for (int i = 0; i < HIST_SIZE; i += 10) {
+        printf("  %-8d %d\n", i, global_hist[i]);
+    }
+    printf("\n");
+
+    print_time("Elapsed:");
+    free(image);
     return 0;
 }
