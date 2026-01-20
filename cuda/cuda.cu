@@ -10,7 +10,7 @@
 
 #define HIST_SIZE 256
 #define MAX_BAR_LENGTH 100
-#define BLOCK_SIZE 256 // Liczba wątków w bloku [3, 4]
+#define BLOCK_SIZE 256
 
 static double timestamp_start, timestamp_end;
 
