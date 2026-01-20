@@ -47,10 +47,10 @@ double elapsed_time(void)
 
 void print_time(char *message)
 {
-  int ms;
+  double ms;
 
   ms = elapsed_time();
-  printf("%s %d ms\n", message, ms);
+  printf("%s %.3f ms\n", message, ms);
 }
 
 
