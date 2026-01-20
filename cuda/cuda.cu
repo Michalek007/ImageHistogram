@@ -154,10 +154,10 @@ int main(void)
     // --- HOST (CPU) SETUP ---
     uint8_t* h_image;
     const int num_pixels = IMG_WIDTH * IMG_HEIGHT;
-    const size_t image_size_bytes = num_pixels * sizeof(h_image);
+    const size_t image_size_bytes = num_pixels * sizeof(*h_image);
 
     // allocate memory for image data
-    h_image = (uint8_t*)malloc(num_pixels);
+    h_image = (uint8_t*)malloc(image_size_bytes);
     if (!h_image) {
         fprintf(stderr, "failed to allocate host memory for image\n");
         return -1;
