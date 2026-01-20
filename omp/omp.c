@@ -8,7 +8,7 @@
 #include "image_data.h"
 
 #define HIST_SIZE 256
-#define NUM_THREADS 8
+#define NUM_THREADS 4
 #define MAX_BAR_LENGTH 100
 
 // Print histogram in terminal
@@ -30,36 +30,50 @@ void print_histogram(const int* hist)
     }
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    int num_threads = NUM_THREADS;
+    if (argc >= 2) {
+        num_threads = atoi(argv[1]);
+        if (num_threads <= 0) {
+            fprintf(stderr, "Invalid number of threads, using default (4)\n");
+            num_threads = 4;
+        }
+    }
+    printf("Number of threads: %d\n", num_threads);
+
     uint8_t* image;
     image = malloc(IMG_WIDTH * IMG_HEIGHT);
     if (load_image(image) <= 0) {
         return -1;
     }
 
-    omp_set_num_threads(NUM_THREADS);
+    omp_set_num_threads(num_threads);
     int global_hist[HIST_SIZE] = {0};
 
     start_time();
     // Parallel region
-    #pragma omp parallel
-    {
-        // Each thread has its own local histogram
-        int local_hist[HIST_SIZE] = {0};
-
-        #pragma omp for
-        for (int i = 0; i < IMG_HEIGHT * IMG_WIDTH; i++) {
-            local_hist[image[i]]++;
-        }
-
-        // Merge local histograms into global
-        #pragma omp critical
-        {
-            for (int k = 0; k < HIST_SIZE; k++) {
-                global_hist[k] += local_hist[k];
-            }
-        }
+//    #pragma omp parallel
+//    {
+//        // Each thread has its own local histogram
+//        int local_hist[HIST_SIZE] = {0};
+//
+//        #pragma omp for
+//        for (int i = 0; i < IMG_HEIGHT * IMG_WIDTH; i++) {
+//            local_hist[image[i]]++;
+//        }
+//
+//        // Merge local histograms into global
+//        #pragma omp critical
+//        {
+//            for (int k = 0; k < HIST_SIZE; k++) {
+//                global_hist[k] += local_hist[k];
+//            }
+//        }
+//    }
+    #pragma omp parallel for reduction(+:global_hist[:HIST_SIZE])
+    for (int i = 0; i < IMG_HEIGHT * IMG_WIDTH; i++) {
+        global_hist[image[i]]++;
     }
     stop_time();
 

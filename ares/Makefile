@@ -1,5 +1,4 @@
-# Default number of ranks if not specified
-RANKS = 4
+THREADS = 4
 
 # Default: build both
 all: omp mpi cuda
@@ -9,14 +8,14 @@ omp:
 	icc -qopenmp omp.c my_timers.c image_data.c -o omp
 
 run_omp: omp
-	./omp
+	./omp $(THREADS)
 
 # MPI Build and Run
 mpi:
 	mpicc mpi.c my_timers.c image_data.c -o mpi
 
 run_mpi: mpi
-	mpiexec -np $(RANKS) ./mpi
+	mpiexec -np $(THREADS) ./mpi
 
 cuda:
 	nvcc cuda.cu -o cuda
@@ -26,4 +25,4 @@ run_cuda:
 
 # Cleanup
 clean:
-	rm -f omp mpi
+	rm -f omp mpi cuda
