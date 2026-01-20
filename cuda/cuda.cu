@@ -87,7 +87,7 @@ int load_image(uint8_t* image){
     return bytes_read;
 }
 
-// Makro do sprawdzania błędów CUDA [5]
+// macro to check CUDA errors
 #define CUDA_CHECK(call) \
     do { \
         cudaError_t err = call; \
@@ -97,45 +97,40 @@ int load_image(uint8_t* image){
         } \
     } while (0)
 
-// Kernel CUDA - odpowiednik pętli równoległej
-// __global__ oznacza, że funkcja działa na urządzeniu (GPU) i jest wywoływana z hosta (CPU) [6-8]
-__global__ void histogram_kernel(const uint8_t *input, int *histogram, int num_pixels) {
-    // Deklaracja pamięci współdzielonej dla bloku [1, 9]
-    // Jest widoczna tylko dla wątków w tym samym bloku
-    __shared__ int temp_hist[HIST_SIZE];
 
-    // Obliczenie globalnego indeksu wątku [10-12]
-    int global_index = threadIdx.x + blockIdx.x * blockDim.x;
+__global__ void histogram_kernel(const uint8_t *input, int *histogram, int num_pixels) {
+    // shared memory for all threads in block
+    __shared__ int shared_hist[HIST_SIZE];
+
+    // Calculate global thread index and stride for grid-stride loop
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int stride = blockDim.x * gridDim.x;
 
-    // Inicjalizacja histogramu lokalnego w pamięci współdzielonej
-    // threadIdx.x identyfikuje wątek wewnątrz bloku [13, 14]
-    if (threadIdx.x < HIST_SIZE) {
-        temp_hist[threadIdx.x] = 0;
+    // initialize shared memory histogram to zero
+    // works even if threads < HIST_SIZE
+    for (int i = threadIdx.x; i < HIST_SIZE; i += blockDim.x) {
+        shared_hist[i] = 0;
     }
 
-    // Bariera synchronizacyjna - czekamy, aż wszystkie wątki w bloku wyzerują pamięć [9, 15]
+    // wait for all threads
     __syncthreads();
 
-    // Główna pętla przetwarzająca piksele
-    // Wątki przetwarzają obraz w pętli (grid-stride loop), aby obsłużyć dowolny rozmiar obrazu [16]
-    for (int i = global_index; i < num_pixels; i += stride) {
-        // Używamy atomicAdd (wiedza ogólna CUDA), aby uniknąć wyścigów danych [17]
-        // Zliczamy piksele do pamięci współdzielonej (szybkiej) [1]
-        atomicAdd(&temp_hist[input[i]], 1);
+    // calculate histogram values
+    for (int i = tid; i < num_pixels; i += stride) {
+        atomicAdd(&shared_hist[input[i]], 1);
     }
 
-    // Czekamy, aż wszystkie wątki w bloku zakończą zliczanie [9, 15]
+    // wait for all threads
     __syncthreads();
 
-    // Wątki przepisują wynik z pamięci współdzielonej do pamięci globalnej
-    if (threadIdx.x < HIST_SIZE) {
-        // Scalanie wyników z różnych bloków w pamięci globalnej urządzenia [18]
-        atomicAdd(&histogram[threadIdx.x], temp_hist[threadIdx.x]);
+    // merge histogram
+    for (int i = threadIdx.x; i < HIST_SIZE; i += blockDim.x) {
+        if (shared_hist[i] > 0) {
+            atomicAdd(&histogram[i], shared_hist[i]);
+        }
     }
 }
 
-// Funkcja pomocnicza do wyświetlania histogramu (bez zmian logicznych, działa na CPU)
 void print_histogram(const int* hist)
 {
     int max_value = 0;
@@ -157,65 +152,81 @@ void print_histogram(const int* hist)
 int main(void)
 {
     // --- HOST (CPU) SETUP ---
-    uint8_t* h_image; // Wskaźnik hosta
-    h_image = (uint8_t*)malloc(IMG_WIDTH * IMG_HEIGHT); // [19]
+    uint8_t* h_image;
+    const int num_pixels = IMG_WIDTH * IMG_HEIGHT;
+    const size_t image_size_bytes = num_pixels * sizeof(h_image);
+
+    // allocate memory for image data
+    h_image = (uint8_t*)malloc(num_pixels);
+    if (!h_image) {
+        fprintf(stderr, "failed to allocate host memory for image\n");
+        return -1;
+    }
+    
     if (load_image(h_image) <= 0) {
+        free(h_image);
         return -1;
     }
 
-    int h_global_hist[HIST_SIZE] = {0}; // Histogram na hoście
-    int num_pixels = IMG_WIDTH * IMG_HEIGHT;
-    int image_size_bytes = num_pixels * sizeof(uint8_t);
-    int hist_size_bytes = HIST_SIZE * sizeof(int);
+    // memory for result histogram
+    int h_global_hist[HIST_SIZE] = {0};
+    const size_t hist_size_bytes = sizeof(h_global_hist);
 
     // --- DEVICE (GPU) SETUP ---
-    uint8_t *d_image;
-    int *d_hist;
+    uint8_t *d_image = NULL;
+    int *d_hist = NULL;
 
-    // Alokacja pamięci na urządzeniu [19, 20]
+    // device memory for image and histogram
     CUDA_CHECK(cudaMalloc((void **)&d_image, image_size_bytes));
     CUDA_CHECK(cudaMalloc((void **)&d_hist, hist_size_bytes));
 
-    // Kopiowanie danych wejściowych z Hosta do Urządzenia [19, 21]
+    // copy image data to device
     CUDA_CHECK(cudaMemcpy(d_image, h_image, image_size_bytes, cudaMemcpyHostToDevice));
-
-    // Inicjalizacja histogramu na GPU zerami (odpowiednik memset)
+    // initialize empty histogram 
     CUDA_CHECK(cudaMemset(d_hist, 0, hist_size_bytes));
 
-    // Konfiguracja Grida i Bloków
-    // Używamy bloków 1D [14]. Liczba bloków wyliczana tak, by pokryć cały obraz [16, 22]
-    int threadsPerBlock = BLOCK_SIZE;
+    // configure CUDA
+    const int threadsPerBlock = BLOCK_SIZE;
     int blocksPerGrid = (num_pixels + threadsPerBlock - 1) / threadsPerBlock;
+    
+    // // get device properties to optimize grid size
+    // cudaDeviceProp deviceProp;
+    // CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
+    // // Limit blocks to reasonable number based on SM count (avoid over-subscription)
+    // const int maxBlocks = deviceProp.multiProcessorCount * 8;
+    // if (blocksPerGrid > maxBlocks) {
+    //     blocksPerGrid = maxBlocks;
+    // }
 
-    printf("Konfiguracja CUDA: Grid wymairy %d, Blok wymiary %d\n", blocksPerGrid, threadsPerBlock);
+    // printf("Device: %s (Compute Capability %d.%d, %d SMs)\n", 
+    //     deviceProp.name, deviceProp.major, deviceProp.minor, deviceProp.multiProcessorCount);
+
+    printf("CUDA Configuration: Grid size = %d blocks, Block size = %d threads\n", 
+           blocksPerGrid, threadsPerBlock);
+
 
     start_time();
 
-    // --- URUCHOMIENIE KERNELA ---
-    // Składnia <<< >>> uruchamia kod na GPU [13, 23]
+    // --- KERNEL LAUNCH ---
     histogram_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_hist, num_pixels);
-
-    // Sprawdzenie błędów uruchomienia kernela (asynchroniczne) [5]
     CUDA_CHECK(cudaGetLastError());
 
-    // Synchronizacja urządzenia, aby upewnić się, że obliczenia się zakończyły przed zatrzymaniem zegara CPU
-    // Kernel uruchamia się asynchronicznie [24]
+    // wait for device calculations
     CUDA_CHECK(cudaDeviceSynchronize());
 
     stop_time();
 
-    // --- POBRANIE WYNIKÓW ---
-    // Kopiowanie wyniku z Urządzenia do Hosta [19, 25]
+    // copy result from device to host memory
     CUDA_CHECK(cudaMemcpy(h_global_hist, d_hist, hist_size_bytes, cudaMemcpyDeviceToHost));
 
-    // --- ZWOLNIENIE ZASOBÓW ---
-    CUDA_CHECK(cudaFree(d_image)); // [19]
-    CUDA_CHECK(cudaFree(d_hist));  // [19]
+    // free device resources
+    CUDA_CHECK(cudaFree(d_image));
+    CUDA_CHECK(cudaFree(d_hist));
 
-    // Print histogram
+    // print histogram
     print_histogram(h_global_hist);
 
-    // Validate
+    // check if calculations correct
     for (int i = 0; i < HIST_SIZE; i++) {
         assert(h_global_hist[i] == hist_gray[i]);
     }
@@ -230,7 +241,6 @@ int main(void)
     print_time("Elapsed:");
     free(h_image);
 
-    // Reset urządzenia (opcjonalne, ale dobra praktyka przy profilowaniu)
     cudaDeviceReset();
 
     return 0;
