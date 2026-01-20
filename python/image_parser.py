@@ -93,5 +93,5 @@ def save_image_as_raw(image_path, output_file):
 
 if __name__ == "__main__":
     # save_image_as_c_array("img.png", "image_data.c")
-    save_image_as_raw("big_img.png",  "image_raw")
-    save_image_histogram_as_c_array("big_img.png",  "big_img.c")
+    save_image_as_raw("verybig.png",  "verybig")
+    save_image_histogram_as_c_array("verybig.png",  "verybig.c")

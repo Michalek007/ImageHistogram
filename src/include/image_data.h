@@ -7,8 +7,8 @@
 
 #include <stdint.h>
 
-#define IMG_WIDTH  3000
-#define IMG_HEIGHT 2000
+#define IMG_WIDTH  10174
+#define IMG_HEIGHT 10531
 
 extern const uint32_t hist_gray[256];
 extern const char* image_filename;

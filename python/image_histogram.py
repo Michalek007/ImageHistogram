@@ -2,7 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 # Load image (change the path to your image)
-image = cv2.imread("img.png")
+image = cv2.imread("verybig.png")
 
 # Check if image was loaded
 if image is None:
